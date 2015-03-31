@@ -596,4 +596,9 @@ public class HibernateDB extends DataStore implements AutoCloseable {
         }
         tx.commit();
     }
+
+    @Override
+    protected boolean allowsNullStoreKeys() {
+        return true;
+    }
 }
