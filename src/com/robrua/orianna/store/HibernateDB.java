@@ -250,6 +250,8 @@ public class HibernateDB extends DataStore implements AutoCloseable {
 
     private final SessionFactory factory;
     private final Session session;
+    private volatile int count;
+    private static final int CLEAR_INTERVAL = 20;
 
     /**
      * Initializes the database for a given hibernate configuration. Handles
@@ -335,6 +337,8 @@ public class HibernateDB extends DataStore implements AutoCloseable {
         final StandardServiceRegistryBuilder ssrb = new StandardServiceRegistryBuilder().applySettings(cfg.getProperties());
         factory = cfg.buildSessionFactory(ssrb.build());
         session = factory.openSession();
+        
+        count = 0;
     }
 
     @Override
@@ -589,6 +593,10 @@ public class HibernateDB extends DataStore implements AutoCloseable {
     private void hibernateSave(final Object obj) {
         final Transaction tx = session.beginTransaction();
         session.merge(obj);
+        if(++count % CLEAR_INTERVAL == 0) {
+            session.flush();
+            session.clear();
+        }
         tx.commit();
     }
 
@@ -600,6 +608,11 @@ public class HibernateDB extends DataStore implements AutoCloseable {
         final Transaction tx = session.beginTransaction();
         for(final Object obj : objs) {
             session.merge(obj);
+            
+            if(++count % CLEAR_INTERVAL == 0) {
+                session.flush();
+                session.clear();
+            }
         }
         tx.commit();
     }
