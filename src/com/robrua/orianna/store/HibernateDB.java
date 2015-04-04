@@ -13,7 +13,6 @@ import org.hibernate.Criteria;
 import org.hibernate.ScrollMode;
 import org.hibernate.ScrollableResults;
 import org.hibernate.Session;
-import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Configuration;
@@ -35,11 +34,9 @@ public class HibernateDB extends DataStore implements AutoCloseable {
     public static class Builder {
         private String autoSchema = "update";
         private String cacheProvider = "none";
-        private String contextClass = "thread";
         private String dialect = "org.hibernate.dialect.MySQLDialect";
         private String driver = "com.mysql.jdbc.Driver";
         private String password = null;
-        private int poolSize = 1;
         private boolean showSQL = false;
         private String url = null;
         private String username = null;
@@ -68,16 +65,15 @@ public class HibernateDB extends DataStore implements AutoCloseable {
             }
 
             final Configuration configuration = new Configuration();
-            configuration
-            .
-                    // DB configuration
-                    setProperty("hibernate.dialect", dialect).setProperty("hibernate.connection.driver_class", driver)
-                    .setProperty("hibernate.connection.url", url).setProperty("hibernate.connection.username", username)
-                    .setProperty("hibernate.connection.password", password).setProperty("hibernate.connection.pool_size", Integer.toString(poolSize))
 
-                    // Hibernate options
-                    .setProperty("hibernate.current_session_context_class", contextClass).setProperty("hibernate.cache.provider_class", cacheProvider)
-                    .setProperty("hibernate.show_sql", Boolean.toString(showSQL)).setProperty("hibernate.hbm2ddl.auto", autoSchema);
+            // DB configuration
+            configuration.setProperty("hibernate.dialect", dialect).setProperty("hibernate.connection.driver_class", driver)
+            .setProperty("hibernate.connection.url", url).setProperty("hibernate.connection.username", username)
+            .setProperty("hibernate.connection.password", password)
+
+            // Hibernate options
+            .setProperty("hibernate.cache.provider_class", cacheProvider).setProperty("hibernate.show_sql", Boolean.toString(showSQL))
+            .setProperty("hibernate.hbm2ddl.auto", autoSchema);
 
             return new HibernateDB(configuration);
         }
@@ -90,16 +86,6 @@ public class HibernateDB extends DataStore implements AutoCloseable {
          */
         public Builder cacheProvider(final String cacheProvider) {
             this.cacheProvider = cacheProvider;
-            return this;
-        }
-
-        /**
-         * @param contextClass
-         *            hibernate.current_session_context_class (default = thread)
-         * @return the builder
-         */
-        public Builder contextClass(final String contextClass) {
-            this.contextClass = contextClass;
             return this;
         }
 
@@ -132,17 +118,6 @@ public class HibernateDB extends DataStore implements AutoCloseable {
          */
         public Builder password(final String password) {
             this.password = password;
-            return this;
-        }
-
-        /**
-         *
-         * @param poolSize
-         *            hibernate.connection.pool_size (default = 1)
-         * @return the builder
-         */
-        public Builder poolSize(final int poolSize) {
-            this.poolSize = poolSize;
             return this;
         }
 
@@ -193,7 +168,7 @@ public class HibernateDB extends DataStore implements AutoCloseable {
         }
 
         @Override
-        public void close() throws Exception {
+        public void close() {
             result.close();
         }
 
@@ -214,6 +189,8 @@ public class HibernateDB extends DataStore implements AutoCloseable {
             }
         }
     }
+
+    private static final long CHECK_MILLIS = 10000L;
 
     /**
      * @return a builder for a HibernateDB
@@ -248,10 +225,7 @@ public class HibernateDB extends DataStore implements AutoCloseable {
         }
     }
 
-    private final SessionFactory factory;
-    private final Session session;
-    private volatile int count;
-    private static final int CLEAR_INTERVAL = 20;
+    private final SessionManager sessionManager;
 
     /**
      * Initializes the database for a given hibernate configuration. Handles
@@ -335,10 +309,7 @@ public class HibernateDB extends DataStore implements AutoCloseable {
                 .addAnnotatedClass(com.robrua.orianna.type.dto.team.TeamStatDetail.class).addAnnotatedClass(com.robrua.orianna.store.HasAllStatus.class);
 
         final StandardServiceRegistryBuilder ssrb = new StandardServiceRegistryBuilder().applySettings(cfg.getProperties());
-        factory = cfg.buildSessionFactory(ssrb.build());
-        session = factory.openSession();
-        
-        count = 0;
+        sessionManager = new SessionManager(cfg.buildSessionFactory(ssrb.build()), CHECK_MILLIS);
     }
 
     @Override
@@ -358,8 +329,7 @@ public class HibernateDB extends DataStore implements AutoCloseable {
 
     @Override
     public void close() {
-        session.close();
-        factory.close();
+        sessionManager.close();
     }
 
     @Override
@@ -544,6 +514,7 @@ public class HibernateDB extends DataStore implements AutoCloseable {
      *            the object to delete
      */
     private void hibernateDelete(final Object obj) {
+        final Session session = sessionManager.getSession();
         final Transaction tx = session.beginTransaction();
         session.delete(obj);
         tx.commit();
@@ -554,6 +525,7 @@ public class HibernateDB extends DataStore implements AutoCloseable {
      *            the objects to delete
      */
     private void hibernateDeleteAll(final Collection<?> objs) {
+        final Session session = sessionManager.getSession();
         final Transaction tx = session.beginTransaction();
         for(final Object obj : objs) {
             session.delete(obj);
@@ -572,6 +544,7 @@ public class HibernateDB extends DataStore implements AutoCloseable {
      */
     @SuppressWarnings("unchecked")
     private <T> T hibernateGet(final Class<T> clazz, final String searchField, final Object searchVal) {
+        final Session session = sessionManager.getSession();
         final Criteria queryCriteria = session.createCriteria(clazz);
         queryCriteria.add(Restrictions.eq(searchField, searchVal));
         return (T)queryCriteria.uniqueResult();
@@ -583,6 +556,7 @@ public class HibernateDB extends DataStore implements AutoCloseable {
      * @return the hibernate results for that class
      */
     private ScrollableResults hibernateGetAll(final Class<?> clazz) {
+        final Session session = sessionManager.getSession();
         return session.createCriteria(clazz).scroll(ScrollMode.FORWARD_ONLY);
     }
 
@@ -591,12 +565,9 @@ public class HibernateDB extends DataStore implements AutoCloseable {
      *            the object to save
      */
     private void hibernateSave(final Object obj) {
+        final Session session = sessionManager.getSession();
         final Transaction tx = session.beginTransaction();
         session.merge(obj);
-        if(++count % CLEAR_INTERVAL == 0) {
-            session.flush();
-            session.clear();
-        }
         tx.commit();
     }
 
@@ -605,14 +576,10 @@ public class HibernateDB extends DataStore implements AutoCloseable {
      *            the objects to save
      */
     private void hibernateSaveAll(final Collection<?> objs) {
+        final Session session = sessionManager.getSession();
         final Transaction tx = session.beginTransaction();
         for(final Object obj : objs) {
             session.merge(obj);
-            
-            if(++count % CLEAR_INTERVAL == 0) {
-                session.flush();
-                session.clear();
-            }
         }
         tx.commit();
     }
