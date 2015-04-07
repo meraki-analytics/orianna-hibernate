@@ -36,6 +36,7 @@ public class HibernateDB extends DataStore implements AutoCloseable {
         private String cacheProvider = "none";
         private String dialect = "org.hibernate.dialect.MySQLDialect";
         private String driver = "com.mysql.jdbc.Driver";
+        private int entityClearTheshold = 100;
         private String password = null;
         private boolean showSQL = false;
         private String url = null;
@@ -68,14 +69,14 @@ public class HibernateDB extends DataStore implements AutoCloseable {
 
             // DB configuration
             configuration.setProperty("hibernate.dialect", dialect).setProperty("hibernate.connection.driver_class", driver)
-            .setProperty("hibernate.connection.url", url).setProperty("hibernate.connection.username", username)
-            .setProperty("hibernate.connection.password", password)
+                    .setProperty("hibernate.connection.url", url).setProperty("hibernate.connection.username", username)
+                    .setProperty("hibernate.connection.password", password)
 
-            // Hibernate options
-            .setProperty("hibernate.cache.provider_class", cacheProvider).setProperty("hibernate.show_sql", Boolean.toString(showSQL))
-            .setProperty("hibernate.hbm2ddl.auto", autoSchema);
+                    // Hibernate options
+                    .setProperty("hibernate.cache.provider_class", cacheProvider).setProperty("hibernate.show_sql", Boolean.toString(showSQL))
+                    .setProperty("hibernate.hbm2ddl.auto", autoSchema);
 
-            return new HibernateDB(configuration);
+            return new HibernateDB(configuration, entityClearTheshold);
         }
 
         /**
@@ -108,6 +109,19 @@ public class HibernateDB extends DataStore implements AutoCloseable {
          */
         public Builder driver(final String driver) {
             this.driver = driver;
+            return this;
+        }
+
+        /**
+         * Sets the maximum number of entities that will be managed by a single
+         * hibernate session before clearing the session
+         *
+         * @param entityClearTheshold
+         *            the maximum number of entities to manage
+         * @return the builder
+         */
+        public Builder entityClearThreshold(final int entityClearTheshold) {
+            this.entityClearTheshold = entityClearTheshold;
             return this;
         }
 
@@ -225,6 +239,7 @@ public class HibernateDB extends DataStore implements AutoCloseable {
         }
     }
 
+    private final int entityClearTheshold;
     private final SessionManager sessionManager;
 
     /**
@@ -233,80 +248,84 @@ public class HibernateDB extends DataStore implements AutoCloseable {
      *
      * @param cfg
      *            the Hibernate config to use for this DB
+     * @param entityClearTheshold
+     *            the maximum number of entities to manage
      */
-    public HibernateDB(final Configuration cfg) {
+    public HibernateDB(final Configuration cfg, final int entityClearTheshold) {
+        this.entityClearTheshold = entityClearTheshold;
+        
         // Add DTO classes
         cfg.addAnnotatedClass(com.robrua.orianna.type.dto.champion.Champion.class).addAnnotatedClass(com.robrua.orianna.type.dto.champion.ChampionList.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.currentgame.BannedChampion.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.currentgame.CurrentGameInfo.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.currentgame.Mastery.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.currentgame.Observer.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.currentgame.Participant.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.currentgame.Rune.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.featuredgames.FeaturedGames.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.game.Game.class).addAnnotatedClass(com.robrua.orianna.type.dto.game.Player.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.game.RawStats.class).addAnnotatedClass(com.robrua.orianna.type.dto.game.RecentGames.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.league.League.class).addAnnotatedClass(com.robrua.orianna.type.dto.league.LeagueEntry.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.league.MiniSeries.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.match.BannedChampion.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.match.CombinedParticipant.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.match.Event.class).addAnnotatedClass(com.robrua.orianna.type.dto.match.Frame.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.match.Mastery.class).addAnnotatedClass(com.robrua.orianna.type.dto.match.MatchDetail.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.match.Participant.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.match.ParticipantFrame.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.match.ParticipantIdentity.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.match.ParticipantStats.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.match.ParticipantTimeline.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.match.ParticipantTimelineData.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.match.Player.class).addAnnotatedClass(com.robrua.orianna.type.dto.match.Position.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.match.Rune.class).addAnnotatedClass(com.robrua.orianna.type.dto.match.Team.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.match.Timeline.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.matchhistory.MatchSummary.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.matchhistory.PlayerHistory.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.BasicData.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.BasicDataStats.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Block.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.BlockItem.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Champion.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.ChampionList.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.ChampionSpell.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.EffectList.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Gold.class).addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Group.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Image.class).addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Info.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Item.class).addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.ItemList.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.ItemTree.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.LanguageStrings.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.LevelTip.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.MapData.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.MapDetails.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Mastery.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.MasteryList.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.MasteryTree.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.MasteryTreeItem.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.MasteryTreeList.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.MetaData.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Passive.class).addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Realm.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Recommended.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Rune.class).addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.RuneList.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Skin.class).addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.SpellVars.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Stats.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.SummonerSpell.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.SummonerSpellList.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.stats.AggregatedStats.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.stats.ChampionStats.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.stats.PlayerStatsSummary.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.stats.PlayerStatsSummaryList.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.stats.RankedStats.class).addAnnotatedClass(com.robrua.orianna.type.dto.status.Incident.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.status.Message.class).addAnnotatedClass(com.robrua.orianna.type.dto.status.Service.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.status.Shard.class).addAnnotatedClass(com.robrua.orianna.type.dto.status.ShardStatus.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.status.Translation.class).addAnnotatedClass(com.robrua.orianna.type.dto.summoner.Mastery.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.summoner.MasteryPage.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.summoner.MasteryPages.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.summoner.RunePage.class).addAnnotatedClass(com.robrua.orianna.type.dto.summoner.RunePages.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.summoner.RuneSlot.class).addAnnotatedClass(com.robrua.orianna.type.dto.summoner.Summoner.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.team.MatchHistorySummary.class).addAnnotatedClass(com.robrua.orianna.type.dto.team.Roster.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.team.Team.class).addAnnotatedClass(com.robrua.orianna.type.dto.team.TeamMemberInfo.class)
-                .addAnnotatedClass(com.robrua.orianna.type.dto.team.TeamStatDetail.class).addAnnotatedClass(com.robrua.orianna.store.HasAllStatus.class);
+        .addAnnotatedClass(com.robrua.orianna.type.dto.currentgame.BannedChampion.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.currentgame.CurrentGameInfo.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.currentgame.Mastery.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.currentgame.Observer.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.currentgame.Participant.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.currentgame.Rune.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.featuredgames.FeaturedGames.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.game.Game.class).addAnnotatedClass(com.robrua.orianna.type.dto.game.Player.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.game.RawStats.class).addAnnotatedClass(com.robrua.orianna.type.dto.game.RecentGames.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.league.League.class).addAnnotatedClass(com.robrua.orianna.type.dto.league.LeagueEntry.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.league.MiniSeries.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.match.BannedChampion.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.match.CombinedParticipant.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.match.Event.class).addAnnotatedClass(com.robrua.orianna.type.dto.match.Frame.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.match.Mastery.class).addAnnotatedClass(com.robrua.orianna.type.dto.match.MatchDetail.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.match.Participant.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.match.ParticipantFrame.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.match.ParticipantIdentity.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.match.ParticipantStats.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.match.ParticipantTimeline.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.match.ParticipantTimelineData.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.match.Player.class).addAnnotatedClass(com.robrua.orianna.type.dto.match.Position.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.match.Rune.class).addAnnotatedClass(com.robrua.orianna.type.dto.match.Team.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.match.Timeline.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.matchhistory.MatchSummary.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.matchhistory.PlayerHistory.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.BasicData.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.BasicDataStats.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Block.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.BlockItem.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Champion.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.ChampionList.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.ChampionSpell.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.EffectList.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Gold.class).addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Group.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Image.class).addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Info.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Item.class).addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.ItemList.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.ItemTree.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.LanguageStrings.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.LevelTip.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.MapData.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.MapDetails.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Mastery.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.MasteryList.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.MasteryTree.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.MasteryTreeItem.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.MasteryTreeList.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.MetaData.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Passive.class).addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Realm.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Recommended.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Rune.class).addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.RuneList.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Skin.class).addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.SpellVars.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.Stats.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.SummonerSpell.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.staticdata.SummonerSpellList.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.stats.AggregatedStats.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.stats.ChampionStats.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.stats.PlayerStatsSummary.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.stats.PlayerStatsSummaryList.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.stats.RankedStats.class).addAnnotatedClass(com.robrua.orianna.type.dto.status.Incident.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.status.Message.class).addAnnotatedClass(com.robrua.orianna.type.dto.status.Service.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.status.Shard.class).addAnnotatedClass(com.robrua.orianna.type.dto.status.ShardStatus.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.status.Translation.class).addAnnotatedClass(com.robrua.orianna.type.dto.summoner.Mastery.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.summoner.MasteryPage.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.summoner.MasteryPages.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.summoner.RunePage.class).addAnnotatedClass(com.robrua.orianna.type.dto.summoner.RunePages.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.summoner.RuneSlot.class).addAnnotatedClass(com.robrua.orianna.type.dto.summoner.Summoner.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.team.MatchHistorySummary.class).addAnnotatedClass(com.robrua.orianna.type.dto.team.Roster.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.team.Team.class).addAnnotatedClass(com.robrua.orianna.type.dto.team.TeamMemberInfo.class)
+        .addAnnotatedClass(com.robrua.orianna.type.dto.team.TeamStatDetail.class).addAnnotatedClass(com.robrua.orianna.store.HasAllStatus.class);
 
         final StandardServiceRegistryBuilder ssrb = new StandardServiceRegistryBuilder().applySettings(cfg.getProperties());
         sessionManager = new SessionManager(cfg.buildSessionFactory(ssrb.build()), CHECK_MILLIS);
@@ -568,6 +587,11 @@ public class HibernateDB extends DataStore implements AutoCloseable {
         final Session session = sessionManager.getSession();
         final Transaction tx = session.beginTransaction();
         session.merge(obj);
+
+        if(session.getStatistics().getEntityCount() >= entityClearTheshold) {
+            session.flush();
+            session.clear();
+        }
         tx.commit();
     }
 
@@ -580,6 +604,11 @@ public class HibernateDB extends DataStore implements AutoCloseable {
         final Transaction tx = session.beginTransaction();
         for(final Object obj : objs) {
             session.merge(obj);
+
+            if(session.getStatistics().getEntityCount() >= entityClearTheshold) {
+                session.flush();
+                session.clear();
+            }
         }
         tx.commit();
     }

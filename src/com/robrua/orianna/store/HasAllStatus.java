@@ -9,7 +9,6 @@ import javax.persistence.Table;
 public class HasAllStatus {
     @Id
     private Class<?> clazz;
-
     private boolean hasAll;
 
     /*
