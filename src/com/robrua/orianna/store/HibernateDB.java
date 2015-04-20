@@ -169,6 +169,7 @@ public class HibernateDB extends DataStore implements AutoCloseable {
     private static class DBIterator<T extends OriannaObject<?>> extends CloseableIterator<T> {
         private final ScrollableResults result;
         private final Class<T> type;
+        private final boolean hasAny;
 
         /**
          * @param type
@@ -179,6 +180,8 @@ public class HibernateDB extends DataStore implements AutoCloseable {
         public DBIterator(final Class<T> type, final ScrollableResults result) {
             this.result = result;
             this.type = type;
+            this.hasAny = result.first();
+            result.beforeFirst();
         }
 
         @Override
@@ -188,12 +191,16 @@ public class HibernateDB extends DataStore implements AutoCloseable {
 
         @Override
         public boolean hasNext() {
-            return !result.isLast();
+            return hasAny && !result.isLast();
         }
 
         @SuppressWarnings("unchecked")
         @Override
         public T next() {
+            if(!hasNext()) {
+                return null;
+            }
+            
             result.next();
             try {
                 return (T)type.getDeclaredConstructors()[0].newInstance(result.get(0));
