@@ -166,7 +166,7 @@ public class HibernateDB extends DataStore implements AutoCloseable {
         }
     }
 
-    private static class DBIterator<T extends OriannaObject<?>> extends CloseableIterator<T> {
+    private class DBIterator<T extends OriannaObject<?>> extends CloseableIterator<T> {
         private final ScrollableResults result;
         private final Class<T> type;
         private final boolean hasAny;
@@ -208,6 +208,11 @@ public class HibernateDB extends DataStore implements AutoCloseable {
             catch(InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException | SecurityException e) {
                 throw new OriannaException("Couldn't load data from DB");
             }
+        }
+
+        @Override
+        public void remove() {
+            throw new UnsupportedOperationException("Can't remove object from DB using iterator.");
         }
     }
 
