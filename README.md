@@ -16,7 +16,7 @@ If you use Maven to manage your dependencies, Orianna Hibernate is posted on Mav
 <dependency>
   <groupId>com.robrua</groupId>
   <artifactId>orianna-hibernate</artifactId>
-  <version>2.2.3</version>
+  <version>2.2.5</version>
 </dependency>
 ```
 
@@ -28,7 +28,7 @@ repositories {
 }
 
 dependencies {
-	compile 'com.robrua:orianna-hibernate:2.2.3'
+	compile 'com.robrua:orianna-hibernate:2.2.5'
 }
 ```
 
