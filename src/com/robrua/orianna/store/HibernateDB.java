@@ -8,6 +8,8 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import org.hibernate.Criteria;
 import org.hibernate.ScrollMode;
@@ -37,6 +39,7 @@ public class HibernateDB extends DataStore implements AutoCloseable {
         private String dialect = "org.hibernate.dialect.MySQLDialect";
         private String driver = "com.mysql.jdbc.Driver";
         private int entityClearTheshold = 100;
+        private Level logLevel = Level.INFO;
         private String password = null;
         private boolean showSQL = false;
         private String url = null;
@@ -64,6 +67,9 @@ public class HibernateDB extends DataStore implements AutoCloseable {
             if(url == null || username == null || password == null) {
                 throw new IllegalArgumentException("URL, Username, and Password must be set!");
             }
+
+            final Logger logger = Logger.getLogger("org.hibernate");
+            logger.setLevel(logLevel);
 
             final Configuration configuration = new Configuration();
 
@@ -126,6 +132,16 @@ public class HibernateDB extends DataStore implements AutoCloseable {
         }
 
         /**
+         * @param logLevel
+         *            hibernate log level
+         * @return the builder
+         */
+        public Builder logLevel(final Level logLevel) {
+            this.logLevel = logLevel;
+            return this;
+        }
+
+        /**
          * @param password
          *            hibernate.connection.password
          * @return the builder
@@ -167,9 +183,10 @@ public class HibernateDB extends DataStore implements AutoCloseable {
     }
 
     private class DBIterator<T extends OriannaObject<?>> extends CloseableIterator<T> {
+        private final boolean hasAny;
+        private boolean isClosed = false;
         private final ScrollableResults result;
         private final Class<T> type;
-        private final boolean hasAny;
 
         /**
          * @param type
@@ -186,12 +203,23 @@ public class HibernateDB extends DataStore implements AutoCloseable {
 
         @Override
         public void close() {
-            result.close();
+            if(!isClosed) {
+                result.close();
+                isClosed = true;
+            }
         }
 
         @Override
         public boolean hasNext() {
-            return hasAny && !result.isLast();
+            if(isClosed) {
+                return false;
+            }
+
+            final boolean hasNext = hasAny && !result.isLast();
+            if(!hasNext && !isClosed) {
+                close();
+            }
+            return hasNext;
         }
 
         @SuppressWarnings("unchecked")
@@ -200,7 +228,7 @@ public class HibernateDB extends DataStore implements AutoCloseable {
             if(!hasNext()) {
                 return null;
             }
-            
+
             result.next();
             try {
                 return (T)type.getDeclaredConstructors()[0].newInstance(result.get(0));
@@ -265,7 +293,7 @@ public class HibernateDB extends DataStore implements AutoCloseable {
      */
     public HibernateDB(final Configuration cfg, final int entityClearTheshold) {
         this.entityClearTheshold = entityClearTheshold;
-        
+
         // Add DTO classes
         cfg.addAnnotatedClass(com.robrua.orianna.type.dto.champion.Champion.class).addAnnotatedClass(com.robrua.orianna.type.dto.champion.ChampionList.class)
         .addAnnotatedClass(com.robrua.orianna.type.dto.currentgame.BannedChampion.class)
